@@ -478,13 +478,17 @@ class FSDPSFTTrainer:
     def validation_step(self, batch: TensorDict):
         self.fsdp_model.eval()
         with torch.no_grad():
-            loss = self._compute_loss_and_backward(batch, do_backward=False)
+            loss, entropy = self._compute_loss_and_backward(batch, do_backward=False)
             if is_cuda_available:
                 torch.distributed.all_reduce(loss, op=torch.distributed.ReduceOp.AVG)
+                torch.distributed.all_reduce(entropy, op=torch.distributed.ReduceOp.AVG)
             elif is_npu_available:
                 torch.distributed.all_reduce(loss)
                 loss /= self.ulysses_device_mesh.size(0)
-        return loss
+                
+                torch.distributed.all_reduce(entropy, op=torch.distributed.ReduceOp.AVG)
+                entropy /= self.ulysses_device_mesh.size(0)
+        return loss, entropy
 
     def save_checkpoint(self, step):
         # save checkpoint
