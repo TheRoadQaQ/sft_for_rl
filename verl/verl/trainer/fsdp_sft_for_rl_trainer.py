@@ -426,13 +426,13 @@ class FSDPSFTTrainer:
         micro_batches = batch.split(self.config.data.micro_batch_size_per_gpu)
         n_micro_batches = len(micro_batches)
         step_loss = 0
-        entropy = 0
+        step_entropy = 0
         for micro_batch in micro_batches:
             loss, entropy = self._compute_loss_and_backward(batch=micro_batch)
             loss, entropy = loss / n_micro_batches, entropy / n_micro_batches
             
             step_loss += loss.item()
-            entropy += entropy.item()
+            step_entropy += entropy.item()
 
         if self.config.model.strategy == 'fsdp':
             grad_norm = self.fsdp_model.clip_grad_norm_(max_norm=self.config.optim.clip_grad)
@@ -466,14 +466,14 @@ class FSDPSFTTrainer:
             torch.distributed.all_reduce(step_loss)
             step_loss /= self.ulysses_device_mesh.size(0)
 
-        entropy = torch.tensor(entropy).to(self.device_name)
+        step_entropy = torch.tensor(step_entropy).to(self.device_name)
         if is_cuda_available:
-            torch.distributed.all_reduce(entropy, op=torch.distributed.ReduceOp.AVG)
+            torch.distributed.all_reduce(step_entropy, op=torch.distributed.ReduceOp.AVG)
         elif is_npu_available:
-            torch.distributed.all_reduce(entropy)
-            entropy /= self.ulysses_device_mesh.size(0)
+            torch.distributed.all_reduce(step_entropy)
+            step_entropy /= self.ulysses_device_mesh.size(0)
 
-        return {"train/loss": step_loss.detach().item(), "train/lr(1e-3)": lr * 1e3, "train/entropy": entropy.detach().item()}
+        return {"train/loss": step_loss.detach().item(), "train/lr(1e-3)": lr * 1e3, "train/entropy": step_entropy.detach().item()}
 
     def validation_step(self, batch: TensorDict):
         self.fsdp_model.eval()
@@ -485,7 +485,7 @@ class FSDPSFTTrainer:
             elif is_npu_available:
                 torch.distributed.all_reduce(loss)
                 loss /= self.ulysses_device_mesh.size(0)
-                
+
                 torch.distributed.all_reduce(entropy, op=torch.distributed.ReduceOp.AVG)
                 entropy /= self.ulysses_device_mesh.size(0)
         return loss, entropy
