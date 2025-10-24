@@ -533,11 +533,12 @@ class FSDPSFTTrainer:
 
         # TODO: add a unified tracking
         if rank == 0:
+            from omegaconf import OmegaConf
             tracking = Tracking(
                 project_name=self.config.trainer.project_name,
                 experiment_name=self.config.trainer.experiment_name,
                 default_backend=self.config.trainer.logger,
-                config=self.config,
+                config=OmegaConf.to_container(self.config, resolve=True),
             )
 
         global_step = 0
