@@ -582,13 +582,16 @@ class FSDPSFTTrainer:
                 if is_last_step or (self.config.trainer.test_freq > 0 and is_valid_step):
                     # Perform validation
                     val_losses = []
+                    val_entropys = []
                     for val_data in self.val_dataloader:
                         val_data = TensorDict(val_data, batch_size=self.config.data.micro_batch_size_per_gpu).to(self.device_name)
-                        val_loss = self.validation_step(val_data)
+                        val_loss, val_entropy = self.validation_step(val_data)
                         val_losses.append(val_loss)
+                        val_entropys.append(val_entropy)
                     if rank == 0:
                         val_loss = torch.mean(torch.stack(val_losses))
-                        metric = {"val/loss": val_loss.detach().item()}
+                        val_entropy = torch.mean(torch.stack(val_entropys))
+                        metric = {"val/loss": val_loss.detach().item(), "val/entropy": val_entropy.detach().item()}
                         tracking.log(data=metric, step=global_step)
                         last_valid_metric = metric
                     torch.distributed.barrier()
