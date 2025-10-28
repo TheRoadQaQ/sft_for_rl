@@ -48,7 +48,7 @@ def main(config):
 
     # Initialize Ray
     if not ray.is_initialized():
-        ray.init(num_cpus=config.ray_init.num_cpus)
+        ray.init(num_cpus=config.ray_init.num_cpus, _temp_dir=config.ray_init.temp_dir)
 
     # evaluate test_score based on data source
     data_source_reward = defaultdict(list)
@@ -70,6 +70,11 @@ def main(config):
     metric_dict = {}
     for data_source, rewards in data_source_reward.items():
         metric_dict[f"test_score/{data_source}"] = np.mean(rewards)
+
+    avg_score = 0
+    for data_source in data_source_reward.keys():
+        avg_score += data_source_reward[data_source]
+    metric_dict["test_score/avg"] = avg_score / len(data_source_reward.keys())
 
     print(metric_dict)
 
