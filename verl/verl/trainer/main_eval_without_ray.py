@@ -61,6 +61,10 @@ def main(config):
     data_sources = dataset[config.data.data_source_key]
     reward_model_data = dataset[config.data.reward_model_key]
 
+    responses = responses.reset_index(drop=True)
+    data_sources = data_sources.reset_index(drop=True)
+    reward_model_data = reward_model_data.reset_index(drop=True)
+    
     total = len(dataset)
 
     # 2. 初始化
