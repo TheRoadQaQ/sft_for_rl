@@ -336,7 +336,8 @@ class FSDPSFTTrainer:
                 loss = loss * loss_mask.to(loss.device)
 
                 # --- Entropy Calculation START ---
-                log_probs = F.log_softmax(shift_logits, dim=-1).detach()
+                # Remove .detach() to allow gradient flow for entropy regularization
+                log_probs = F.log_softmax(shift_logits, dim=-1)
                 probs = torch.exp(log_probs)
                 entropy_per_token = -torch.sum(probs * log_probs, dim=-1)
                 masked_entropy = entropy_per_token * loss_mask.to(entropy_per_token.device)
@@ -386,7 +387,8 @@ class FSDPSFTTrainer:
                 loss = full_loss * loss_mask
 
                 # --- Entropy Calculation START ---
-                log_probs_rmpad = F.log_softmax(logits_rmpad, dim=-1).detach()
+                # Remove .detach() to allow gradient flow for entropy regularization
+                log_probs_rmpad = F.log_softmax(logits_rmpad, dim=-1)
                 probs_rmpad = torch.exp(log_probs_rmpad)
                 entropy_rmpad = -torch.sum(probs_rmpad * log_probs_rmpad, dim=-1)    
 
@@ -407,13 +409,25 @@ class FSDPSFTTrainer:
             else:
                 dp_size = 1
 
-            loss = torch.sum(loss) / (valid_token_this_rank + 1e-8) * dp_size
-
+            # Calculate average loss and entropy
+            avg_loss = torch.sum(loss) / (valid_token_this_rank + 1e-8) * dp_size
             avg_entropy = torch.sum(masked_entropy) / (valid_token_this_rank + 1e-8) * dp_size
 
-            if do_backward:
-                loss.backward()
+            # Add entropy regularization: negative entropy to encourage higher entropy
+            entropy_weight = getattr(self.config.optim, "entropy_regularization_weight", 0.0)
 
+            loss_for_backward = avg_loss - entropy_weight * avg_entropy
+
+            # 2. 如果是训练步骤，则执行反向传播
+            if do_backward:
+                loss_for_backward.backward()
+
+            if do_backward:
+                loss = loss_for_backward
+            else:
+                loss = avg_loss  # <-- 在验证时返回原始 loss
+
+            # 返回用于日志的 loss 和熵
             return loss, avg_entropy
 
     def training_step(self, batch: TensorDict):
